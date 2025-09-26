@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Zoraxy index generator every N seconds
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=N
+AccuracySec=1s
+Unit=zoraxy-generate-index.service
+
+[Install]
+WantedBy=timers.target

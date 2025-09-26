@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Zoraxy Admin Panel</title>
+<style>
+  body{font-family:Inter,system-ui,Arial;background:#f4f7fb;color:#0b1220;margin:18px}
+  h1{margin-top:0}
+  .row{display:flex;gap:8px;align-items:center}
+  input,button,select,textarea{padding:8px;border-radius:6px;border:1px solid #d0d7e2}
+  .card{background:white;padding:12px;border-radius:10px;margin:8px 0;box-shadow:0 6px 18px rgba(12,12,20,0.04)}
+  .file-list{max-height:260px;overflow:auto;border:1px solid #eef2f7;padding:8px;border-radius:8px;background:#fff}
+</style>
+</head>
+<body>
+  <h1>Zoraxy Admin</h1>
+  <p class="card">
+    <strong>Clone Git Repository</strong><br>
+    <div class="row">
+      <input id="cloneRepo" placeholder="https://github.com/user/repo.git" style="width:60%"/>
+      <input id="cloneTarget" placeholder="optional folder name" />
+      <button id="btnClone">Clone</button>
+    </div>
+  </p>
+
+  <p class="card">
+    <strong>Upload ZIP (extract)</strong><br>
+    <div class="row">
+      <input type="file" id="zipfile" accept=".zip" />
+      <input id="zipTarget" placeholder="optional folder name" />
+      <button id="btnUpload">Upload & Extract</button>
+    </div>
+  </p>
+
+  <p class="card">
+    <strong>File explorer & editor</strong>
+    <div style="margin-top:8px">
+      <input id="explorerPath" placeholder="/" style="width:60%"/>
+      <button id="btnList">List</button>
+      <button id="btnPull">Pull all repos</button>
+    </div>
+    <div id="listing" class="file-list" style="margin-top:8px"></div>
+
+    <div id="editor" style="display:none;margin-top:8px">
+      <h4>Editor: <span id="editPath"></span></h4>
+      <textarea id="editArea" style="width:100%;height:300px"></textarea><br/>
+      <button id="btnSave">Save</button>
+      <button id="btnDelete">Delete</button>
+    </div>
+  </p>
+
+<script>
+/*
+  admin.html is injected by admin-server.js after successful login.
+  The server replaces:
+    %%ADMIN_PASSWORD%%  -> the password string (JSON encoded)
+    %%FRONTEND_ADMIN_URL%% -> the admin base path (like '/admin')
+*/
+const PW = %%ADMIN_PASSWORD%%;
+const ADMIN_BASE = %%FRONTEND_ADMIN_URL%%; // e.g. '/admin'
+
+async function api(path, opts={}) {
+  opts.headers = opts.headers || {};
+  opts.headers['x-admin-password'] = PW;
+  const res = await fetch(ADMIN_BASE + path, opts);
+  const txt = await res.text();
+  try { return JSON.parse(txt); } catch(e) { return { ok:false, text: txt, status: res.status }; }
+}
+
+document.getElementById('btnClone').onclick = async () => {
+  const repoUrl = document.getElementById('cloneRepo').value.trim();
+  const target = document.getElementById('cloneTarget').value.trim();
+  if (!repoUrl) return alert('repo required');
+  const out = await api('/clone', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json' },
+    body: JSON.stringify({ repoUrl, target })
+  });
+  alert(JSON.stringify(out));
+};
+
+document.getElementById('btnUpload').onclick = async () => {
+  const f = document.getElementById('zipfile').files[0];
+  const t = document.getElementById('zipTarget').value.trim();
+  if (!f) return alert('select zip');
+  const fm = new FormData(); fm.append('archive', f); if (t) fm.append('target', t);
+  const res = await fetch(ADMIN_BASE + '/upload', { method:'POST', headers:{ 'x-admin-password': PW }, body: fm });
+  const json = await res.json();
+  alert(JSON.stringify(json));
+};
+
+document.getElementById('btnList').onclick = async () => {
+  const p = document.getElementById('explorerPath').value.trim() || '/';
+  const res = await fetch(ADMIN_BASE + '/files?path='+encodeURIComponent(p), { headers:{ 'x-admin-password': PW }});
+  const j = await res.json();
+  if (!j.ok) return alert('list failed: '+JSON.stringify(j));
+  const list = document.getElementById('listing');
+  list.innerHTML = '';
+  j.entries.forEach(e=>{
+    const el = document.createElement('div');
+    el.textContent = e.isDir ? '[DIR] ' + e.name : e.name;
+    el.style.cursor='pointer';
+    el.onclick = () => {
+      if (e.isDir) { document.getElementById('explorerPath').value = (p+'/'+e.name).replace(/\\/\\/+/, '/'); document.getElementById('btnList').click(); }
+      else openFile((p+'/'+e.name).replace(/\\/\\/+/, '/'));
+    };
+    list.appendChild(el);
+  });
+};
+
+async function openFile(path) {
+  const res = await fetch(ADMIN_BASE + '/file?path='+encodeURIComponent(path), { headers:{ 'x-admin-password': PW }});
+  const j = await res.json();
+  if (!j.ok) return alert('read failed');
+  document.getElementById('editor').style.display='block';
+  document.getElementById('editPath').textContent = path;
+  document.getElementById('editArea').value = j.content;
+}
+
+document.getElementById('btnSave').onclick = async () => {
+  const path = document.getElementById('editPath').textContent;
+  const content = document.getElementById('editArea').value;
+  const res = await fetch(ADMIN_BASE + '/file', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-admin-password': PW },
+    body: JSON.stringify({ path, content })
+  });
+  const j = await res.json();
+  alert(JSON.stringify(j));
+};
+
+document.getElementById('btnDelete').onclick = async () => {
+  const path = document.getElementById('editPath').textContent;
+  if (!confirm('Delete ' + path + ' ?')) return;
+  const res = await fetch(ADMIN_BASE + '/file/delete', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'x-admin-password': PW },
+    body: JSON.stringify({ path })
+  });
+  const j = await res.json();
+  alert(JSON.stringify(j));
+  document.getElementById('btnList').click();
+};
+
+document.getElementById('btnPull').onclick = async () => {
+  const res = await fetch(ADMIN_BASE + '/pull', { method:'POST', headers:{ 'x-admin-password': PW }});
+  const j = await res.json();
+  alert(JSON.stringify(j));
+};
+</script>
+</body>
+</html>

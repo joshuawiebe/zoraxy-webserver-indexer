@@ -1,0 +1,9 @@
+[Unit]
+Description=Generate Zoraxy index.html
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/node /YOUR/PROJECT/PATH/generate-index.js
+WorkingDirectory=/YOUR/PROJECT/PATH
+EnvironmentFile=/YOUR/PROJECT/PATH/.env

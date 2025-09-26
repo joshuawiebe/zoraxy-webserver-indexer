@@ -1,0 +1,10 @@
+[Unit]
+Description=Zoraxy Index Generator (single-run)
+After=network.target
+
+[Service]
+Type=oneshot
+User=<your-user>
+WorkingDirectory=<ADMIN_DIR>
+EnvironmentFile=<ADMIN_DIR>/.env
+ExecStart=<path-to-node> <ADMIN_DIR>/generate-index.js
